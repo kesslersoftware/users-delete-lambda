@@ -13,6 +13,7 @@ import software.amazon.awssdk.services.dynamodb.model.DeleteItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.DeleteItemResponse;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -32,17 +33,23 @@ public class DeleteUserHandlerTest {
 
     @Test
     public void testDeleteUser_Successful() {
-        String testUserId = "user123";
+        APIGatewayProxyRequestEvent event = new APIGatewayProxyRequestEvent();
+        Map<String, String> claims = Map.of("sub", "11111111-2222-3333-4444-555555555555");
+        Map<String, Object> authorizer = new HashMap<>();
+        authorizer.put("claims", claims);
 
-        // Set up mock request event with path parameter
-        APIGatewayProxyRequestEvent request = new APIGatewayProxyRequestEvent()
-                .withPathParameters(Map.of("user_id", testUserId));
+        APIGatewayProxyRequestEvent.ProxyRequestContext rc = new APIGatewayProxyRequestEvent.ProxyRequestContext();
+        rc.setAuthorizer(authorizer);
+        event.setRequestContext(rc);
+
+        // Path param "s" since client calls /users/s
+        event.setPathParameters(Map.of("user_id", "s"));
 
         // Stub deleteItem call
         when(dynamoDb.deleteItem(any(DeleteItemRequest.class)))
                 .thenReturn(DeleteItemResponse.builder().build());
 
-        var response = handler.handleRequest(request, context);
+        var response = handler.handleRequest(event, context);
 
         // Assertions
         assertEquals(200, response.getStatusCode());
@@ -54,31 +61,38 @@ public class DeleteUserHandlerTest {
         DeleteItemRequest capturedRequest = captor.getValue();
 
         assertEquals("users", capturedRequest.tableName());
-        assertEquals(testUserId, capturedRequest.key().get("user_id").s());
+        assertEquals("11111111-2222-3333-4444-555555555555", capturedRequest.key().get("user_id").s());
     }
 
     @Test
     public void testDeleteUser_MissingUserId() {
-        APIGatewayProxyRequestEvent request = new APIGatewayProxyRequestEvent()
-                .withPathParameters(Map.of()); // No user_id provided
+        APIGatewayProxyRequestEvent event = null;
 
-        var response = handler.handleRequest(request, context);
+        var response = handler.handleRequest(event, context);
 
-        assertEquals(400, response.getStatusCode());
-        assertTrue(response.getBody().contains("Missing user_id"));
+        assertEquals(401, response.getStatusCode());
+        assertTrue(response.getBody().contains("Unauthorized"));
         verify(dynamoDb, never()).deleteItem((DeleteItemRequest) any());
     }
 
     @Test
     public void testDeleteUser_DynamoDbException() {
-        String testUserId = "user456";
-        APIGatewayProxyRequestEvent request = new APIGatewayProxyRequestEvent()
-                .withPathParameters(Map.of("user_id", testUserId));
+        APIGatewayProxyRequestEvent event = new APIGatewayProxyRequestEvent();
+        Map<String, String> claims = Map.of("sub", "11111111-2222-3333-4444-555555555555");
+        Map<String, Object> authorizer = new HashMap<>();
+        authorizer.put("claims", claims);
+
+        APIGatewayProxyRequestEvent.ProxyRequestContext rc = new APIGatewayProxyRequestEvent.ProxyRequestContext();
+        rc.setAuthorizer(authorizer);
+        event.setRequestContext(rc);
+
+        // Path param "s" since client calls /users/s
+        event.setPathParameters(Map.of("user_id", "s"));
 
         when(dynamoDb.deleteItem(any(DeleteItemRequest.class)))
                 .thenThrow(new RuntimeException("DynamoDB error"));
 
-        var response = handler.handleRequest(request, context);
+        var response = handler.handleRequest(event, context);
 
         assertEquals(500, response.getStatusCode());
         assertTrue(response.getBody().contains("Unexpected server error"));
