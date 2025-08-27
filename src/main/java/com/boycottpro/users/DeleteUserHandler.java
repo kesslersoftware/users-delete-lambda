@@ -5,6 +5,7 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
 
+import com.boycottpro.models.ResponseMessage;
 import com.boycottpro.utilities.JwtUtility;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -33,21 +34,32 @@ public class DeleteUserHandler implements RequestHandler<APIGatewayProxyRequestE
 
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent event, Context context) {
+        String sub = null;
         try {
-            String sub = JwtUtility.getSubFromRestEvent(event);
-            if (sub == null) return response(401, "Unauthorized");
+            sub = JwtUtility.getSubFromRestEvent(event);
+            if (sub == null) return response(401, Map.of("message", "Unauthorized"));
             boolean deleted = deleteUserById(sub);
-            return response(200, "user deleted successfully.");
+            ResponseMessage message = new ResponseMessage(200,
+                    "user deleted successfully.",
+                    "no issues deleting user");
+            return response(200, message);
         } catch (Exception e) {
-            return response(500,"Unexpected server error: " + e.getMessage());
+            System.out.println(e.getMessage() + " for user " + sub);
+            return response(500,Map.of("error", "Unexpected server error: " + e.getMessage()) );
         }
     }
 
-    private APIGatewayProxyResponseEvent response(int status, String body) {
+    private APIGatewayProxyResponseEvent response(int status, Object body) {
+        String responseBody = null;
+        try {
+            responseBody = objectMapper.writeValueAsString(body);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
         return new APIGatewayProxyResponseEvent()
                 .withStatusCode(status)
                 .withHeaders(Map.of("Content-Type", "application/json"))
-                .withBody(body);
+                .withBody(responseBody);
     }
 
     private boolean deleteUserById(String userId) {
